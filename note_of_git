@@ -21,3 +21,5 @@ git diff HEAD可以查看提交区和工作区文件的不同之处
 
 git branch -d [分支名] 可以删除某一个分支
 git merge [分支名]可以将一个分支合并到本分支之上
+
+git reflog 可以查看git的命令历史记录
