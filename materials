@@ -1,0 +1,21 @@
+awesome vim: github.com/amix/
+
+Xen安装
+http://bbotte.blog.51cto.com/6205307/1564187/
+
+
+xen博客
+http://www.cnblogs.com/hackboy/tag/xen/
+
+pid 到 task_struct:
+http://blog.chinaunix.net/uid-27033491-id-3293063.html
+
+
+内存回收 整体流程
+http://www.cnblogs.com/tolimit/p/5435068.html
+
+内存回收 lru链表
+http://www.cnblogs.com/tolimit/p/5447448.html
+
+filebench 语法：
+https://github.com/filebench/filebench/wiki/Workload-model-language
