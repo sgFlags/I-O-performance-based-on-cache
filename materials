@@ -29,5 +29,13 @@ http://www.cnblogs.com/tolimit/p/5435068.html
 内存回收 lru链表
 http://www.cnblogs.com/tolimit/p/5447448.html
 
+
+内存管理：slab管理
+http://www.cnblogs.com/tolimit/p/4566189.html
+
+
 filebench 语法：
 https://github.com/filebench/filebench/wiki/Workload-model-language
+
+systemtap:
+http://blog.csdn.net/panfengyun12345/article/details/16858429
