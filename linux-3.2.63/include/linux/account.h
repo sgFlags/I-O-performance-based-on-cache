@@ -32,6 +32,7 @@ void lru_timer_fn(void);
 unsigned long timeval_minus(struct timeval a1, struct timeval a2);
 void free_pages_account(struct page *page, unsigned int order);
 void init_task_tracing_obj(void);
+void free_page_account(struct page *page);
 
 
 #endif
