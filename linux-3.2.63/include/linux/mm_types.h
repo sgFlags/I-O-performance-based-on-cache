@@ -153,6 +153,7 @@ struct page {
 
     //bai start
     struct page_account* pg_acct;
+    int page_in_lru;
     //int used;
     //struct task_struct* task;
     //bai end

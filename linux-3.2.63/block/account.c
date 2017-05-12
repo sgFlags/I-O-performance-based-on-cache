@@ -52,7 +52,7 @@ void lru_timer_fn(void)
             else if(strcmp(tsk_acct->task->comm,tsk_acct->name)!=0||tsk_acct->pid!=tsk_acct->task->pid){
                 tsk_acct->task->traced=0;
                 tsk_acct->task->acct=NULL;
-                printk(KERN_INFO"task %d %s is deleted!!\n",tsk_acct->pid,tsk_acct->name);
+                printk(KERN_INFO"task %d %s is deleted!! total_pages_in_lru=%d\n",tsk_acct->pid,tsk_acct->name,tsk_acct->total_pages_in_lru);
                 __list_del_entry(&tsk_acct->list);
                 kfree(tsk_acct);
                 continue;
@@ -69,7 +69,7 @@ void lru_timer_fn(void)
         }
         spin_unlock(&vm_task_lock);
     }
-    printk(KERN_INFO"next timer of lru i=%d\n",i);
+    //printk(KERN_INFO"next timer of lru i=%d\n",i);
     mod_timer(&lru_timer,jiffies+HZ*10);
     
 }
@@ -103,9 +103,13 @@ void free_page_account(struct page *page)
 {
     if (page->pg_acct && page->pg_acct->task->traced && page->pg_acct->task->acct){
         spin_lock(&page->pg_acct->task->acct->lock);
-        page->pg_acct->task->acct->total_pages_in_lru--;
+        if(page->pg_acct->page_in_lru==1)
+            page->pg_acct->task->acct->total_pages_in_lru--;
+        else
+            printk(KERN_INFO"free a page of traced fn not in lru\n");
         spin_unlock(&page->pg_acct->task->acct->lock);
         kfree(page->pg_acct);
+        page->pg_acct=NULL;
     }
  
 }

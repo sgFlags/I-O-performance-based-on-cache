@@ -465,18 +465,28 @@ void __lru_cache_add(struct page *page, enum lru_list lru)
             current->acct = kmalloc(sizeof(struct task_account),GFP_ATOMIC);
             spin_lock_init(&current->acct->lock);
             spin_lock(&current->acct->lock);
-            current->acct->total_pages_in_lru=0;
+            current->acct->total_pages_in_lru=1;
             current->acct->total_pages=0;
             current->acct->task=current;
+            //if(page->pg_acct)
+            //page->pg_acct->page_in_lru=1;
             //spin_unlock(&current->acct->lock);
+            page->page_in_lru=1;
+            printk(KERN_INFO"unbelievable in lru_cache_add!\n");
         }
         else{
             spin_lock(&current->acct->lock);
-            current->acct->total_pages_in_lru++;
+            //if(page->pg_acct && page->pg_acct->page_in_lru!=1){
+            if(page->page_in_lru!=1)
+                current->acct->total_pages_in_lru++;
+            //current->acct->total_pages_in_lru++;
+            page->page_in_lru=1;
+              //  page->pg_acct->page_in_lru=1;
+           // }
         }
         spin_unlock(&current->acct->lock);
     }
-    else{
+/*    else{
         if(strcmp(current->comm,"a.out")==0||strcmp(current->comm,"filebench")==0){
             printk(KERN_INFO"%d %s traced\n",current->pid,current->comm);
             if(!current->acct){
@@ -488,11 +498,11 @@ void __lru_cache_add(struct page *page, enum lru_list lru)
                 current->acct->task=current;
                 strcpy(current->acct->name,current->comm);
                 current->acct->pid=current->pid;
-     //           printk(KERN_INFO"acct initilized\n"); 
             }
             else{
                 spin_lock(&current->acct->lock);
-                current->acct->total_pages++;
+                if(page->pg_acct && page->pg_acct->page_in_lru!=1)
+                    current->acct->total_pages_in_lru++;
             }
             spin_unlock(&current->acct->lock);
             spin_lock(&vm_task_lock);
@@ -500,7 +510,7 @@ void __lru_cache_add(struct page *page, enum lru_list lru)
             spin_unlock(&vm_task_lock);
             current->traced=1;
         }
-    } 
+    }*/ 
     //bai end
 	page_cache_get(page);
 	if (!pagevec_add(pvec, page))

@@ -1122,10 +1122,11 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file)
         do_gettimeofday(&tv);
         spin_lock(&page->pg_acct->task->acct->lock);
         min_pages_in_lru = page->pg_acct->task->acct->total_pages*10*HZ/timeval_minus(tv,page->pg_acct->task->acct->last_time_val);//计算预留内存大小
-        if(min_pages_in_lru>=12800)
-            min_pages_in_lru=12800;
-        if(min_pages_in_lru<=2560)
-            min_pages_in_lru=2560; 
+        if(min_pages_in_lru>=32800)
+            min_pages_in_lru=32800;
+        if(min_pages_in_lru<=12560)
+            min_pages_in_lru=12560; 
+        printk(KERN_INFO"calculate min_pages_in_lru=%d\n",min_pages_in_lru);
         if(page->pg_acct->task->acct->total_pages_in_lru <= min_pages_in_lru){
             spin_unlock(&page->pg_acct->task->acct->lock);
             return ret;
@@ -1186,10 +1187,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		unsigned long page_pfn;
 		int zone_id;
         struct timeval tv;
-        //bai start
-        //int min_pages_in_lru;
-        //bai end
-		page = lru_to_page(src);
+		
+        page = lru_to_page(src);
 		prefetchw_prev_lru_page(page, src, flags);
 
 		VM_BUG_ON(!PageLRU(page));

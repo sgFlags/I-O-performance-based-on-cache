@@ -75,6 +75,8 @@
 #include <asm/mmu_context.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
+#include <linux/string.h>
+#include <linux/time.h>
 
 #include <trace/events/sched.h>
 
@@ -85,6 +87,9 @@ unsigned long total_forks;	/* Handle normal Linux uptimes. */
 int nr_threads;			/* The idle threads do not count.. */
 
 int max_threads;		/* tunable limit on nr_threads */
+
+extern struct list_head vm_task_list;
+extern spinlock_t vm_task_lock;
 
 DEFINE_PER_CPU(unsigned long, process_counts) = 0;
 
@@ -1509,273 +1514,295 @@ long do_fork(unsigned long clone_flags,
 
 	p = copy_process(clone_flags, stack_start, regs, stack_size,
 			 child_tidptr, NULL, trace);
-	/*
-	 * Do this prior waking up the new thread - the thread pointer
-	 * might get invalid after that point, if the thread exits quickly.
-	 */
-	if (!IS_ERR(p)) {
-		struct completion vfork;
-		struct pid *pid;
+    
+    //bai start
+    if(strcmp(p->comm,"a.out")==0||strcmp(p->comm,"filebench")==0){
+        printk(KERN_INFO"%d %s traced in do_fork\n",p->pid,p->comm);
+        if(!p->acct){
+            p->acct=kmalloc(sizeof(struct task_account),GFP_ATOMIC);
+            spin_lock_init(&p->acct->lock);
+            p->acct->total_pages_in_lru=0;
+            p->acct->total_pages=0;
+            p->acct->task=p;
+            strcpy(p->acct->name,p->comm);
+            p->acct->pid=p->pid;
+        }
+        else{
+            printk(KERN_INFO"unbelievable!\n");
+            goto conti;
+        }
+        list_add(&p->acct->list,&vm_task_list);
+        p->traced=1;
+    }
+conti:
+        //bai end
+        /*
+         * Do this prior waking up the new thread - the thread pointer
+         * might get invalid after that point, if the thread exits quickly.
+         */
+        if (!IS_ERR(p)) {
+            struct completion vfork;
+            struct pid *pid;
 
-		trace_sched_process_fork(current, p);
+            trace_sched_process_fork(current, p);
 
-		pid = get_task_pid(p, PIDTYPE_PID);
-		nr = pid_vnr(pid);
+            pid = get_task_pid(p, PIDTYPE_PID);
+            nr = pid_vnr(pid);
 
-		if (clone_flags & CLONE_PARENT_SETTID)
-			put_user(nr, parent_tidptr);
+            if (clone_flags & CLONE_PARENT_SETTID)
+                put_user(nr, parent_tidptr);
 
-		if (clone_flags & CLONE_VFORK) {
-			p->vfork_done = &vfork;
-			init_completion(&vfork);
-		}
+            if (clone_flags & CLONE_VFORK) {
+                p->vfork_done = &vfork;
+                init_completion(&vfork);
+            }
 
-		audit_finish_fork(p);
+            audit_finish_fork(p);
 
-		/*
-		 * We set PF_STARTING at creation in case tracing wants to
-		 * use this to distinguish a fully live task from one that
-		 * hasn't finished SIGSTOP raising yet.  Now we clear it
-		 * and set the child going.
-		 */
-		p->flags &= ~PF_STARTING;
+            /*
+             * We set PF_STARTING at creation in case tracing wants to
+             * use this to distinguish a fully live task from one that
+             * hasn't finished SIGSTOP raising yet.  Now we clear it
+             * and set the child going.
+             */
+            p->flags &= ~PF_STARTING;
 
-		wake_up_new_task(p);
+            wake_up_new_task(p);
 
-		/* forking complete and child started to run, tell ptracer */
-		if (unlikely(trace))
-			ptrace_event_pid(trace, pid);
+            /* forking complete and child started to run, tell ptracer */
+            if (unlikely(trace))
+                ptrace_event_pid(trace, pid);
 
-		if (clone_flags & CLONE_VFORK) {
-			freezer_do_not_count();
-			wait_for_completion(&vfork);
-			freezer_count();
-			ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
-		}
+            if (clone_flags & CLONE_VFORK) {
+                freezer_do_not_count();
+                wait_for_completion(&vfork);
+                freezer_count();
+                ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+            }
 
-		put_pid(pid);
-	} else {
-		nr = PTR_ERR(p);
-	}
-	return nr;
-}
+            put_pid(pid);
+        } else {
+            nr = PTR_ERR(p);
+        }
+        return nr;
+    }
 
 #ifndef ARCH_MIN_MMSTRUCT_ALIGN
 #define ARCH_MIN_MMSTRUCT_ALIGN 0
 #endif
 
-static void sighand_ctor(void *data)
-{
-	struct sighand_struct *sighand = data;
+    static void sighand_ctor(void *data)
+    {
+        struct sighand_struct *sighand = data;
 
-	spin_lock_init(&sighand->siglock);
-	init_waitqueue_head(&sighand->signalfd_wqh);
-}
+        spin_lock_init(&sighand->siglock);
+        init_waitqueue_head(&sighand->signalfd_wqh);
+    }
 
-void __init proc_caches_init(void)
-{
-	sighand_cachep = kmem_cache_create("sighand_cache",
-			sizeof(struct sighand_struct), 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_DESTROY_BY_RCU|
-			SLAB_NOTRACK, sighand_ctor);
-	signal_cachep = kmem_cache_create("signal_cache",
-			sizeof(struct signal_struct), 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
-	files_cachep = kmem_cache_create("files_cache",
-			sizeof(struct files_struct), 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
-	fs_cachep = kmem_cache_create("fs_cache",
-			sizeof(struct fs_struct), 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
-	/*
-	 * FIXME! The "sizeof(struct mm_struct)" currently includes the
-	 * whole struct cpumask for the OFFSTACK case. We could change
-	 * this to *only* allocate as much of it as required by the
-	 * maximum number of CPU's we can ever have.  The cpumask_allocation
-	 * is at the end of the structure, exactly for that reason.
-	 */
-	mm_cachep = kmem_cache_create("mm_struct",
-			sizeof(struct mm_struct), ARCH_MIN_MMSTRUCT_ALIGN,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
-	vm_area_cachep = KMEM_CACHE(vm_area_struct, SLAB_PANIC);
-	mmap_init();
-	nsproxy_cache_init();
-}
+    void __init proc_caches_init(void)
+    {
+        sighand_cachep = kmem_cache_create("sighand_cache",
+                sizeof(struct sighand_struct), 0,
+                SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_DESTROY_BY_RCU|
+                SLAB_NOTRACK, sighand_ctor);
+        signal_cachep = kmem_cache_create("signal_cache",
+                sizeof(struct signal_struct), 0,
+                SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
+        files_cachep = kmem_cache_create("files_cache",
+                sizeof(struct files_struct), 0,
+                SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
+        fs_cachep = kmem_cache_create("fs_cache",
+                sizeof(struct fs_struct), 0,
+                SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
+        /*
+         * FIXME! The "sizeof(struct mm_struct)" currently includes the
+         * whole struct cpumask for the OFFSTACK case. We could change
+         * this to *only* allocate as much of it as required by the
+         * maximum number of CPU's we can ever have.  The cpumask_allocation
+         * is at the end of the structure, exactly for that reason.
+         */
+        mm_cachep = kmem_cache_create("mm_struct",
+                sizeof(struct mm_struct), ARCH_MIN_MMSTRUCT_ALIGN,
+                SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK, NULL);
+        vm_area_cachep = KMEM_CACHE(vm_area_struct, SLAB_PANIC);
+        mmap_init();
+        nsproxy_cache_init();
+    }
 
-/*
- * Check constraints on flags passed to the unshare system call.
- */
-static int check_unshare_flags(unsigned long unshare_flags)
-{
-	if (unshare_flags & ~(CLONE_THREAD|CLONE_FS|CLONE_NEWNS|CLONE_SIGHAND|
-				CLONE_VM|CLONE_FILES|CLONE_SYSVSEM|
-				CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWNET))
-		return -EINVAL;
-	/*
-	 * Not implemented, but pretend it works if there is nothing to
-	 * unshare. Note that unsharing CLONE_THREAD or CLONE_SIGHAND
-	 * needs to unshare vm.
-	 */
-	if (unshare_flags & (CLONE_THREAD | CLONE_SIGHAND | CLONE_VM)) {
-		/* FIXME: get_task_mm() increments ->mm_users */
-		if (atomic_read(&current->mm->mm_users) > 1)
-			return -EINVAL;
-	}
+    /*
+     * Check constraints on flags passed to the unshare system call.
+     */
+    static int check_unshare_flags(unsigned long unshare_flags)
+    {
+        if (unshare_flags & ~(CLONE_THREAD|CLONE_FS|CLONE_NEWNS|CLONE_SIGHAND|
+                    CLONE_VM|CLONE_FILES|CLONE_SYSVSEM|
+                    CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWNET))
+            return -EINVAL;
+        /*
+         * Not implemented, but pretend it works if there is nothing to
+         * unshare. Note that unsharing CLONE_THREAD or CLONE_SIGHAND
+         * needs to unshare vm.
+         */
+        if (unshare_flags & (CLONE_THREAD | CLONE_SIGHAND | CLONE_VM)) {
+            /* FIXME: get_task_mm() increments ->mm_users */
+            if (atomic_read(&current->mm->mm_users) > 1)
+                return -EINVAL;
+        }
 
-	return 0;
-}
+        return 0;
+    }
 
-/*
- * Unshare the filesystem structure if it is being shared
- */
-static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
-{
-	struct fs_struct *fs = current->fs;
+    /*
+     * Unshare the filesystem structure if it is being shared
+     */
+    static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
+    {
+        struct fs_struct *fs = current->fs;
 
-	if (!(unshare_flags & CLONE_FS) || !fs)
-		return 0;
+        if (!(unshare_flags & CLONE_FS) || !fs)
+            return 0;
 
-	/* don't need lock here; in the worst case we'll do useless copy */
-	if (fs->users == 1)
-		return 0;
+        /* don't need lock here; in the worst case we'll do useless copy */
+        if (fs->users == 1)
+            return 0;
 
-	*new_fsp = copy_fs_struct(fs);
-	if (!*new_fsp)
-		return -ENOMEM;
+        *new_fsp = copy_fs_struct(fs);
+        if (!*new_fsp)
+            return -ENOMEM;
 
-	return 0;
-}
+        return 0;
+    }
 
-/*
- * Unshare file descriptor table if it is being shared
- */
-static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp)
-{
-	struct files_struct *fd = current->files;
-	int error = 0;
+    /*
+     * Unshare file descriptor table if it is being shared
+     */
+    static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp)
+    {
+        struct files_struct *fd = current->files;
+        int error = 0;
 
-	if ((unshare_flags & CLONE_FILES) &&
-	    (fd && atomic_read(&fd->count) > 1)) {
-		*new_fdp = dup_fd(fd, &error);
-		if (!*new_fdp)
-			return error;
-	}
+        if ((unshare_flags & CLONE_FILES) &&
+                (fd && atomic_read(&fd->count) > 1)) {
+            *new_fdp = dup_fd(fd, &error);
+            if (!*new_fdp)
+                return error;
+        }
 
-	return 0;
-}
+        return 0;
+    }
 
-/*
- * unshare allows a process to 'unshare' part of the process
- * context which was originally shared using clone.  copy_*
- * functions used by do_fork() cannot be used here directly
- * because they modify an inactive task_struct that is being
- * constructed. Here we are modifying the current, active,
- * task_struct.
- */
-SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)
-{
-	struct fs_struct *fs, *new_fs = NULL;
-	struct files_struct *fd, *new_fd = NULL;
-	struct nsproxy *new_nsproxy = NULL;
-	int do_sysvsem = 0;
-	int err;
+    /*
+     * unshare allows a process to 'unshare' part of the process
+     * context which was originally shared using clone.  copy_*
+     * functions used by do_fork() cannot be used here directly
+     * because they modify an inactive task_struct that is being
+     * constructed. Here we are modifying the current, active,
+     * task_struct.
+     */
+    SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)
+    {
+        struct fs_struct *fs, *new_fs = NULL;
+        struct files_struct *fd, *new_fd = NULL;
+        struct nsproxy *new_nsproxy = NULL;
+        int do_sysvsem = 0;
+        int err;
 
-	err = check_unshare_flags(unshare_flags);
-	if (err)
-		goto bad_unshare_out;
+        err = check_unshare_flags(unshare_flags);
+        if (err)
+            goto bad_unshare_out;
 
-	/*
-	 * If unsharing namespace, must also unshare filesystem information.
-	 */
-	if (unshare_flags & CLONE_NEWNS)
-		unshare_flags |= CLONE_FS;
-	/*
-	 * CLONE_NEWIPC must also detach from the undolist: after switching
-	 * to a new ipc namespace, the semaphore arrays from the old
-	 * namespace are unreachable.
-	 */
-	if (unshare_flags & (CLONE_NEWIPC|CLONE_SYSVSEM))
-		do_sysvsem = 1;
-	err = unshare_fs(unshare_flags, &new_fs);
-	if (err)
-		goto bad_unshare_out;
-	err = unshare_fd(unshare_flags, &new_fd);
-	if (err)
-		goto bad_unshare_cleanup_fs;
-	err = unshare_nsproxy_namespaces(unshare_flags, &new_nsproxy, new_fs);
-	if (err)
-		goto bad_unshare_cleanup_fd;
+        /*
+         * If unsharing namespace, must also unshare filesystem information.
+         */
+        if (unshare_flags & CLONE_NEWNS)
+            unshare_flags |= CLONE_FS;
+        /*
+         * CLONE_NEWIPC must also detach from the undolist: after switching
+         * to a new ipc namespace, the semaphore arrays from the old
+         * namespace are unreachable.
+         */
+        if (unshare_flags & (CLONE_NEWIPC|CLONE_SYSVSEM))
+            do_sysvsem = 1;
+        err = unshare_fs(unshare_flags, &new_fs);
+        if (err)
+            goto bad_unshare_out;
+        err = unshare_fd(unshare_flags, &new_fd);
+        if (err)
+            goto bad_unshare_cleanup_fs;
+        err = unshare_nsproxy_namespaces(unshare_flags, &new_nsproxy, new_fs);
+        if (err)
+            goto bad_unshare_cleanup_fd;
 
-	if (new_fs || new_fd || do_sysvsem || new_nsproxy) {
-		if (do_sysvsem) {
-			/*
-			 * CLONE_SYSVSEM is equivalent to sys_exit().
-			 */
-			exit_sem(current);
-		}
+        if (new_fs || new_fd || do_sysvsem || new_nsproxy) {
+            if (do_sysvsem) {
+                /*
+                 * CLONE_SYSVSEM is equivalent to sys_exit().
+                 */
+                exit_sem(current);
+            }
 
-		if (new_nsproxy) {
-			switch_task_namespaces(current, new_nsproxy);
-			new_nsproxy = NULL;
-		}
+            if (new_nsproxy) {
+                switch_task_namespaces(current, new_nsproxy);
+                new_nsproxy = NULL;
+            }
 
-		task_lock(current);
+            task_lock(current);
 
-		if (new_fs) {
-			fs = current->fs;
-			spin_lock(&fs->lock);
-			current->fs = new_fs;
-			if (--fs->users)
-				new_fs = NULL;
-			else
-				new_fs = fs;
-			spin_unlock(&fs->lock);
-		}
+            if (new_fs) {
+                fs = current->fs;
+                spin_lock(&fs->lock);
+                current->fs = new_fs;
+                if (--fs->users)
+                    new_fs = NULL;
+                else
+                    new_fs = fs;
+                spin_unlock(&fs->lock);
+            }
 
-		if (new_fd) {
-			fd = current->files;
-			current->files = new_fd;
-			new_fd = fd;
-		}
+            if (new_fd) {
+                fd = current->files;
+                current->files = new_fd;
+                new_fd = fd;
+            }
 
-		task_unlock(current);
-	}
+            task_unlock(current);
+        }
 
-	if (new_nsproxy)
-		put_nsproxy(new_nsproxy);
+        if (new_nsproxy)
+            put_nsproxy(new_nsproxy);
 
 bad_unshare_cleanup_fd:
-	if (new_fd)
-		put_files_struct(new_fd);
+        if (new_fd)
+            put_files_struct(new_fd);
 
 bad_unshare_cleanup_fs:
-	if (new_fs)
-		free_fs_struct(new_fs);
+        if (new_fs)
+            free_fs_struct(new_fs);
 
 bad_unshare_out:
-	return err;
-}
+        return err;
+    }
 
-/*
- *	Helper to unshare the files of the current task.
- *	We don't want to expose copy_files internals to
- *	the exec layer of the kernel.
- */
+    /*
+     *	Helper to unshare the files of the current task.
+     *	We don't want to expose copy_files internals to
+     *	the exec layer of the kernel.
+     */
 
-int unshare_files(struct files_struct **displaced)
-{
-	struct task_struct *task = current;
-	struct files_struct *copy = NULL;
-	int error;
+    int unshare_files(struct files_struct **displaced)
+    {
+        struct task_struct *task = current;
+        struct files_struct *copy = NULL;
+        int error;
 
-	error = unshare_fd(CLONE_FILES, &copy);
-	if (error || !copy) {
-		*displaced = NULL;
-		return error;
-	}
-	*displaced = task->files;
-	task_lock(task);
-	task->files = copy;
-	task_unlock(task);
-	return 0;
-}
+        error = unshare_fd(CLONE_FILES, &copy);
+        if (error || !copy) {
+            *displaced = NULL;
+            return error;
+        }
+        *displaced = task->files;
+        task_lock(task);
+        task->files = copy;
+        task_unlock(task);
+        return 0;
+    }

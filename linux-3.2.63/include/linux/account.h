@@ -25,6 +25,7 @@ struct page_account {
     //int used;
     struct task_struct* task;
     struct timeval used_tv;
+    int page_in_lru;
 
 };
 void start_lru_timer(void);

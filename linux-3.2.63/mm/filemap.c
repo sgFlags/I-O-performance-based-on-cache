@@ -1134,34 +1134,7 @@ find_page:
  
       //  if((current->comm[0]=='a'&&current->comm[1]=='.')||(current->comm[0]=='f'&&current->comm[1]=='i'))
        //     printk(KERN_INFO"%d %s read a page\n",current->pid,current->comm);    
-        if(current->traced==1)
-        {
-         //   printk(KERN_INFO"%d read traced success!!\n", current->pid);
-            struct timeval tv;
-            do_gettimeofday(&tv);
-            if(!page->pg_acct || page->pg_acct->task!=current){
-                kfree(page->pg_acct);
-                page->pg_acct=kmalloc(sizeof(struct page_account), GFP_ATOMIC);
-                page->pg_acct->task=current;
-                page->pg_acct->used_tv=tv;
-                spin_lock(&page->pg_acct->task->acct->lock);
-                page->pg_acct->task->acct->total_pages++;
-                spin_unlock(&page->pg_acct->task->acct->lock); 
-            }
-            else{
-                spin_lock(&page->pg_acct->task->acct->lock);
-                unsigned long last_clock_update = timeval_to_jiffies(&page->pg_acct->task->acct->last_time_val);
-                unsigned long last_used = timeval_to_jiffies(&page->pg_acct->used_tv);
-                if(!time_after(last_used,last_clock_update)){   
-                    page->pg_acct->task->acct->total_pages++;
-                }
-                page->pg_acct->used_tv=tv;
-                spin_unlock(&page->pg_acct->task->acct->lock);
-            }
-           // printk(KERN_INFO"%d read traced 2 success!!\n", current->pid);       
-        }
-        //bai end
-        if (PageReadahead(page)) {
+       if (PageReadahead(page)) {
 			page_cache_async_readahead(mapping,
 					ra, filp, page,
 					index, last_index - index);
@@ -1222,8 +1195,37 @@ page_ok:
 		if (prev_index != index || offset != prev_offset)
 			mark_page_accessed(page);
 		prev_index = index;
-
-		/*
+        
+        //bai start
+        if(current->traced==1)
+        {
+         //   printk(KERN_INFO"%d read traced success!!\n", current->pid);
+            struct timeval tv;
+            do_gettimeofday(&tv);
+            if(!page->pg_acct || page->pg_acct->task!=current){
+                kfree(page->pg_acct);
+                page->pg_acct=kmalloc(sizeof(struct page_account), GFP_ATOMIC);
+                page->pg_acct->task=current;
+                page->pg_acct->used_tv=tv;
+                spin_lock(&page->pg_acct->task->acct->lock);
+                page->pg_acct->task->acct->total_pages++;
+                spin_unlock(&page->pg_acct->task->acct->lock); 
+            }
+            else{
+                spin_lock(&page->pg_acct->task->acct->lock);
+                unsigned long last_clock_update = timeval_to_jiffies(&page->pg_acct->task->acct->last_time_val);
+                unsigned long last_used = timeval_to_jiffies(&page->pg_acct->used_tv);
+                if(!time_after(last_used,last_clock_update)){   
+                    page->pg_acct->task->acct->total_pages++;
+                }
+                page->pg_acct->used_tv=tv;
+                spin_unlock(&page->pg_acct->task->acct->lock);
+            }
+           // printk(KERN_INFO"%d read traced 2 success!!\n", current->pid);       
+        }
+        //bai end
+ 
+        /*
 		 * Ok, we have the page, and it's up-to-date, so
 		 * now we can copy it to user space...
 		 *
@@ -1233,7 +1235,8 @@ page_ok:
 		 * "pos" here (the actor routine has to update the user buffer
 		 * pointers and the remaining count).
 		 */
-		ret = actor(desc, page, offset, nr);
+
+        ret = actor(desc, page, offset, nr);
 		offset += ret;
 		index += offset >> PAGE_CACHE_SHIFT;
 		offset &= ~PAGE_CACHE_MASK;
