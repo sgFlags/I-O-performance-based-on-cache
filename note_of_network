@@ -1,1 +1,13 @@
 本地连接可以说指的就是计算机网卡和调解制配器之间的连接，调解制配器和外界网络之间还需要打通一条连接才可以连接外网
+
+/etc/network/interfaces 是ubuntu用来设置网卡、网桥等的地方
+qemu-kvm -hda /home/bai/study/ubuntu10.img -m 1024 -netdev tap,script=/etc/qemu-ifup,downscript=no,id=net0 -device virtio-net-pci,netdev=net0,mac=00:11:22:33:44:AB
+
+
+qemu-ifup脚本文件:
+#! /bin/sh  
+switch=br0
+ifconfig $1 up  #ip link set $1 up  
+brctl addif ${switch} $1
+
+其中，$1是虚拟机的网卡，br0是宿主机的网桥，网桥需要自行在/etc/network/interfaces中进行设置（包括ip等）

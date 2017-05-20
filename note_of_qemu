@@ -1,0 +1,4 @@
+网络设置：参考note_of_qemu
+磁盘创建：
+qemu-img create -f qcow2 /home/bai/study/ubuntu.img 15G
+qemu-kvm/qemu-system-x86_64 -boot d -hda /home/bai/study/ubuntu.img -cdrom /home/bai/Downloads/ubuntu......iso -m 1024 

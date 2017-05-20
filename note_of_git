@@ -25,3 +25,6 @@ git branch -d [分支名] 可以删除某一个分支
 git merge [分支名]可以将一个分支合并到本分支之上
 
 git reflog 可以查看git的命令历史记录
+
+git clone -b 可以克隆对应的分支
+git@github.com:sgFlags/notes.git 用ssh方式访问某个github的repo（此处sgFlags是用户名，notes.git是repo名）

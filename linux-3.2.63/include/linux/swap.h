@@ -215,7 +215,7 @@ extern unsigned int nr_free_pagecache_pages(void);
 
 
 /* linux/mm/swap.c */
-extern void __lru_cache_add(struct page *, enum lru_list lru);
+extern void __lru_cache_add(struct page *, enum lru_list lru, int ifaddnew);
 extern void lru_cache_add_lru(struct page *, enum lru_list lru);
 extern void lru_add_page_tail(struct zone* zone,
 			      struct page *page, struct page *page_tail);
@@ -235,18 +235,18 @@ extern void add_page_to_unevictable_list(struct page *page);
  */
 static inline void lru_cache_add_anon(struct page *page)
 {
-	__lru_cache_add(page, LRU_INACTIVE_ANON);
+	__lru_cache_add(page, LRU_INACTIVE_ANON, 0);
 }
 
 static inline void lru_cache_add_file(struct page *page)
 {
-	__lru_cache_add(page, LRU_INACTIVE_FILE);
+	__lru_cache_add(page, LRU_INACTIVE_FILE, 1);
 }
 
 /* linux/mm/vmscan.c */
 extern unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 					gfp_t gfp_mask, nodemask_t *mask);
-extern int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file);
+extern int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file, int ifshrink);
 extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *mem,
 						  gfp_t gfp_mask, bool noswap);
 extern unsigned long mem_cgroup_shrink_node_zone(struct mem_cgroup *mem,

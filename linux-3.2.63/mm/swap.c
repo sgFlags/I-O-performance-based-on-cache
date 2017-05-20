@@ -453,68 +453,64 @@ void mark_page_accessed(struct page *page)
 
 EXPORT_SYMBOL(mark_page_accessed);
 
-void __lru_cache_add(struct page *page, enum lru_list lru)
+void __lru_cache_add(struct page *page, enum lru_list lru, int ifaddnew)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvecs)[lru];
+    int flags;
     //bai start
     //init_timer(&lru_timer);
     //if (lru == LRU_ACTIVE_FILE && lru == LRU_ACTIVE_ANON){
-    if(current->traced==1){
-   //     printk(KERN_INFO"in __lru_cache_add, traced pid=%d tgid=%d\n",current->pid,current->tgid);
-        if (!current->acct){
-            current->acct = kmalloc(sizeof(struct task_account),GFP_ATOMIC);
-            spin_lock_init(&current->acct->lock);
-            spin_lock(&current->acct->lock);
-            current->acct->total_pages_in_lru=1;
-            current->acct->total_pages=0;
-            current->acct->task=current;
-            //if(page->pg_acct)
-            //page->pg_acct->page_in_lru=1;
-            //spin_unlock(&current->acct->lock);
-            page->page_in_lru=1;
-            printk(KERN_INFO"unbelievable in lru_cache_add!\n");
-        }
-        else{
-            spin_lock(&current->acct->lock);
-            //if(page->pg_acct && page->pg_acct->page_in_lru!=1){
-            if(page->page_in_lru!=1)
-                current->acct->total_pages_in_lru++;
-            //current->acct->total_pages_in_lru++;
-            page->page_in_lru=1;
-              //  page->pg_acct->page_in_lru=1;
-           // }
-        }
-        spin_unlock(&current->acct->lock);
-    }
-/*    else{
-        if(strcmp(current->comm,"a.out")==0||strcmp(current->comm,"filebench")==0){
-            printk(KERN_INFO"%d %s traced\n",current->pid,current->comm);
-            if(!current->acct){
-                current->acct=kmalloc(sizeof(struct task_account),GFP_ATOMIC);
+    if(ifaddnew==1){
+        if(current->traced==1){
+            if (!current->acct){
+                current->acct = kmalloc(sizeof(struct task_account),GFP_ATOMIC);
                 spin_lock_init(&current->acct->lock);
-                spin_lock(&current->acct->lock);
+                spin_lock(&current->acct->lock);//,flags);
                 current->acct->total_pages_in_lru=1;
-                current->acct->total_pages=1;
+                current->acct->total_pages=0;
                 current->acct->task=current;
-                strcpy(current->acct->name,current->comm);
-                current->acct->pid=current->pid;
+                page->page_in_lru=1;
+                printk(KERN_INFO"unbelievable in lru_cache_add!\n");
             }
             else{
-                spin_lock(&current->acct->lock);
-                if(page->pg_acct && page->pg_acct->page_in_lru!=1)
+                spin_lock(&current->acct->lock);//,flags);
+                if(page->page_in_lru!=1)
                     current->acct->total_pages_in_lru++;
+                page->page_in_lru=1;
             }
-            spin_unlock(&current->acct->lock);
-            spin_lock(&vm_task_lock);
-            list_add(&current->acct->list,&vm_task_list);
-            spin_unlock(&vm_task_lock);
-            current->traced=1;
+            spin_unlock(&current->acct->lock);//,flags);
         }
-    }*/ 
+        else{
+            if(strcmp(current->comm,"a.out")==0||strcmp(current->comm,"filebench")==0){
+                printk(KERN_INFO"%d %s traced\n",current->pid,current->comm);
+                if(!current->acct){
+                    current->acct=kmalloc(sizeof(struct task_account),GFP_ATOMIC);
+                    spin_lock_init(&current->acct->lock);
+                    spin_lock(&current->acct->lock);
+                    current->acct->total_pages_in_lru=1;
+                    current->acct->last_total_pages=0;
+                    current->acct->total_pages=1;
+                    current->acct->task=current;
+                    strcpy(current->acct->name,current->comm);
+                    current->acct->pid=current->pid;
+                }
+                else{
+                    spin_lock(&current->acct->lock);//,flags);
+                    if(page->pg_acct && page->page_in_lru!=1)
+                        current->acct->total_pages_in_lru++;
+                }
+                spin_unlock(&current->acct->lock);//,flags);
+                spin_lock(&vm_task_lock);
+                list_add(&current->acct->list,&vm_task_list);
+                spin_unlock(&vm_task_lock);
+                current->traced=1;
+            }
+        }
+    }
     //bai end
-	page_cache_get(page);
-	if (!pagevec_add(pvec, page))
-		____pagevec_lru_add(pvec, lru);
+    page_cache_get(page);
+    if (!pagevec_add(pvec, page))
+        ____pagevec_lru_add(pvec, lru);
 	put_cpu_var(lru_add_pvecs);
 }
 EXPORT_SYMBOL(__lru_cache_add);
@@ -535,7 +531,7 @@ void lru_cache_add_lru(struct page *page, enum lru_list lru)
 	}
 
 	VM_BUG_ON(PageLRU(page) || PageActive(page) || PageUnevictable(page));
-	__lru_cache_add(page, lru);
+	__lru_cache_add(page, lru, 0);
 }
 
 /**

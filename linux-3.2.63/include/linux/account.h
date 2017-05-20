@@ -12,6 +12,7 @@ struct task_account {
   //  int traced;
     struct task_struct *task;
     int total_pages;
+    int last_total_pages;
     int total_pages_in_lru;
     struct timeval last_time_val;
     struct list_head list; 

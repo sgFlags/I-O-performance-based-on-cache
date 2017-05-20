@@ -1920,9 +1920,6 @@ static int __block_commit_write(struct inode *inode, struct page *page,
 	int partial = 0;
 	unsigned blocksize;
 	struct buffer_head *bh, *head;
-    //bai start
-    struct timeval tv;
-    //bai end
 
 	blocksize = 1 << inode->i_blkbits;
     //if((current->comm[0]=='a'&&current->comm[1]=='.')||(current->comm[0]=='f'&&current->comm[1]=='i'))
@@ -1930,7 +1927,6 @@ static int __block_commit_write(struct inode *inode, struct page *page,
     //bai start
     if (current->traced==1)
     {
-        //printk(KERN_INFO"%d write traced success!!\n", current->pid);
         struct timeval tv;
         do_gettimeofday(&tv);
         if (!page->pg_acct || page->pg_acct->task!=current){
@@ -1952,7 +1948,6 @@ static int __block_commit_write(struct inode *inode, struct page *page,
             page->pg_acct->used_tv=tv; 
             spin_unlock(&page->pg_acct->task->acct->lock);
         }
-        //printk(KERN_INFO"%d write traced success!!\n", current->pid);
     }
     //bai end
 

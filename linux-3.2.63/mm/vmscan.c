@@ -43,6 +43,7 @@
 #include <linux/sysctl.h>
 #include <linux/oom.h>
 #include <linux/prefetch.h>
+#include <linux/string.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -148,6 +149,7 @@ struct scan_control {
  */
 int vm_swappiness = 60;
 long vm_total_pages;	/* The total number of pages which the VM controls */
+int pages_sta=0;
 
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
@@ -1042,7 +1044,7 @@ keep_lumpy:
  *
  * returns 0 on success, -ve errno on failure.
  */
-int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file)
+int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file, int ifshrink)
 {
 	bool all_lru_mode;
 	int ret = -EINVAL;
@@ -1050,6 +1052,8 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file)
     //bai start
     struct timeval tv;
     int min_pages_in_lru;
+    int num_about_last;
+    int num_about_now;
     //bai end
 
 	/* Only take pages on the LRU. */
@@ -1117,36 +1121,49 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode, int file)
 	if ((mode & ISOLATE_UNMAPPED) && page_mapped(page))
 		return ret;
          //bai start
+
+    //unsigned long flags;
     
-    if((mode & ISOLATE_INACTIVE) && (page->pg_acct) && page->pg_acct->task->traced && page->pg_acct->task->acct){
-        do_gettimeofday(&tv);
-        spin_lock(&page->pg_acct->task->acct->lock);
-        min_pages_in_lru = page->pg_acct->task->acct->total_pages*10*HZ/timeval_minus(tv,page->pg_acct->task->acct->last_time_val);//计算预留内存大小
-        if(min_pages_in_lru>=32800)
-            min_pages_in_lru=32800;
-        if(min_pages_in_lru<=12560)
-            min_pages_in_lru=12560; 
-        printk(KERN_INFO"calculate min_pages_in_lru=%d\n",min_pages_in_lru);
-        if(page->pg_acct->task->acct->total_pages_in_lru <= min_pages_in_lru){
+    if((mode & ISOLATE_INACTIVE) && (page->pg_acct) && page->pg_acct->task->traced==1 && page->pg_acct->task->acct && ifshrink==1){
+        if(current!=page->pg_acct->task && current->traced!=page->pg_acct->task->pid)
+        {    
+            do_gettimeofday(&tv);
+            spin_lock(&page->pg_acct->task->acct->lock);
+            num_about_now = page->pg_acct->task->acct->total_pages*10*HZ/timeval_minus(tv,page->pg_acct->task->acct->last_time_val);
+            num_about_last = page->pg_acct->task->acct->last_total_pages;
+            min_pages_in_lru = (num_about_now+3*num_about_last*7)/10;
+            if(min_pages_in_lru>=32800)
+                min_pages_in_lru=32800;
+            if(min_pages_in_lru<=12560)
+                min_pages_in_lru=12560;
+            // min_pages_in_lru=0;//debug
+            pages_sta++;
+            if(pages_sta>=3000)
+            {
+                printk(KERN_INFO"%d %s calculate min_pages_in_lru=%d\n",current->pid,current->comm,min_pages_in_lru);
+                pages_sta=0;
+            }
+            if(page->pg_acct->task->acct->total_pages_in_lru <= min_pages_in_lru){
+                spin_unlock(&page->pg_acct->task->acct->lock);
+                return ret;
+            }
             spin_unlock(&page->pg_acct->task->acct->lock);
-            return ret;
         }
-        spin_unlock(&page->pg_acct->task->acct->lock);
     }
     //bai end
 
-	if (likely(get_page_unless_zero(page))) {
-		/*
-		 * Be careful not to clear PageLRU until after we're
-		 * sure the page is not being freed elsewhere -- the
-		 * page release code relies on it.
-		 */
+    if (likely(get_page_unless_zero(page))) {
+        /*
+         * Be careful not to clear PageLRU until after we're
+         * sure the page is not being freed elsewhere -- the
+         * page release code relies on it.
+         */
 
-		ClearPageLRU(page);
-		ret = 0;
-	}
+        ClearPageLRU(page);
+        ret = 0;
+    }
 
-	return ret;
+    return ret;
 }
 
 /*
@@ -1194,7 +1211,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 		VM_BUG_ON(!PageLRU(page));
         
         
-		switch (__isolate_lru_page(page, mode, file)) {
+		switch (__isolate_lru_page(page, mode, file, 1)) {
 		case 0:
         
 
@@ -1256,7 +1273,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 			    !PageSwapCache(cursor_page))
 				break;
 
-			if (__isolate_lru_page(cursor_page, mode, file) == 0) {
+			if (__isolate_lru_page(cursor_page, mode, file, 1) == 0) {
 		  
                 //bai start
            /* if(cursor_page->pg_acct && cursor_page->pg_acct->task->traced){
@@ -2673,6 +2690,9 @@ static unsigned long balance_pgdat(pg_data_t *pgdat, int order,
 	struct shrink_control shrink = {
 		.gfp_mask = sc.gfp_mask,
 	};
+    //bai start
+    current->traced=pgdat->source_pid;
+    //bai end
 loop_again:
 	total_scanned = 0;
 	sc.nr_reclaimed = 0;
@@ -2946,8 +2966,9 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 	 */
 	if (!sleeping_prematurely(pgdat, order, remaining, classzone_idx)) {
 		trace_mm_vmscan_kswapd_sleep(pgdat->node_id);
-
-		/*
+        printk(KERN_INFO"sleep??\n");
+	    
+        /*
 		 * vmstat counters are not perfectly accurate and the estimated
 		 * value for counters such as NR_FREE_PAGES can deviate from the
 		 * true value by nr_online_cpus * threshold. To avoid the zone
@@ -3024,7 +3045,7 @@ static int kswapd(void *p)
 	balanced_classzone_idx = classzone_idx;
 	for ( ; ; ) {
 		int ret;
-
+        printk(KERN_INFO"recycling\n");
 		/*
 		 * If the last balance_pgdat was unsuccessful it's unlikely a
 		 * new request of a similar or harder type will succeed soon
@@ -3048,6 +3069,7 @@ static int kswapd(void *p)
 		} else {
 			kswapd_try_to_sleep(pgdat, balanced_order,
 						balanced_classzone_idx);
+            printk(KERN_INFO"start from sleeping? source=%d %s\n",pgdat->source_pid,pgdat->source_name);
 			order = pgdat->kswapd_max_order;
 			classzone_idx = pgdat->classzone_idx;
 			new_order = order;
@@ -3067,6 +3089,7 @@ static int kswapd(void *p)
 		if (!ret) {
 			trace_mm_vmscan_kswapd_wake(pgdat->node_id, order);
 			balanced_classzone_idx = classzone_idx;
+            printk(KERN_INFO"balance_pgdat!!\n");
 			balanced_order = balance_pgdat(pgdat, order,
 						&balanced_classzone_idx);
 		}
@@ -3100,7 +3123,11 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
 		return;
 	if (zone_watermark_ok_safe(zone, order, low_wmark_pages(zone), 0, 0))
 		return;
-
+    //bai start
+    strcpy(pgdat->source_name,current->comm);
+    pgdat->source_pid=current->pid;
+    //bai end
+    
 	trace_mm_vmscan_wakeup_kswapd(pgdat->node_id, zone_idx(zone), order);
 	wake_up_interruptible(&pgdat->kswapd_wait);
 }

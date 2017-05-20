@@ -2050,7 +2050,8 @@ void wake_all_kswapd(unsigned int order, struct zonelist *zonelist,
 {
 	struct zoneref *z;
 	struct zone *zone;
-
+    
+    printk(KERN_INFO"%d %s wakes all kswapd\n",current->pid,current->comm);
 	for_each_zone_zonelist(zone, z, zonelist, high_zoneidx)
 		wakeup_kswapd(zone, order, classzone_idx);
 }
@@ -2133,6 +2134,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	if (NUMA_BUILD && (gfp_mask & GFP_THISNODE) == GFP_THISNODE)
 		goto nopage;
 
+   // printk(KERN_INFO"%d %s free some page\n",current->pid,current->comm);
 restart:
 	if (!(gfp_mask & __GFP_NO_KSWAPD))
 		wake_all_kswapd(order, zonelist, high_zoneidx,

@@ -1515,28 +1515,7 @@ long do_fork(unsigned long clone_flags,
 	p = copy_process(clone_flags, stack_start, regs, stack_size,
 			 child_tidptr, NULL, trace);
     
-    //bai start
-    if(strcmp(p->comm,"a.out")==0||strcmp(p->comm,"filebench")==0){
-        printk(KERN_INFO"%d %s traced in do_fork\n",p->pid,p->comm);
-        if(!p->acct){
-            p->acct=kmalloc(sizeof(struct task_account),GFP_ATOMIC);
-            spin_lock_init(&p->acct->lock);
-            p->acct->total_pages_in_lru=0;
-            p->acct->total_pages=0;
-            p->acct->task=p;
-            strcpy(p->acct->name,p->comm);
-            p->acct->pid=p->pid;
-        }
-        else{
-            printk(KERN_INFO"unbelievable!\n");
-            goto conti;
-        }
-        list_add(&p->acct->list,&vm_task_list);
-        p->traced=1;
-    }
-conti:
-        //bai end
-        /*
+       /*
          * Do this prior waking up the new thread - the thread pointer
          * might get invalid after that point, if the thread exits quickly.
          */

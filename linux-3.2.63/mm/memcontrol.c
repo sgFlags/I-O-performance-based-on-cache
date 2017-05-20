@@ -1230,7 +1230,7 @@ unsigned long mem_cgroup_isolate_pages(unsigned long nr_to_scan,
 			continue;
 
 		scan++;
-		ret = __isolate_lru_page(page, mode, file);
+		ret = __isolate_lru_page(page, mode, file, 0);
 		switch (ret) {
 		case 0:
 			list_move(&page->lru, dst);

@@ -62,6 +62,7 @@ void lru_timer_fn(void)
                 do_gettimeofday(&tsk_acct->last_time_val);
                 task=tsk_acct->task;
                 printk(KERN_INFO"%d %s: total_pages_in_lru=%d,total_pages=%d\n",task->pid,task->comm,tsk_acct->total_pages_in_lru,tsk_acct->total_pages);
+                tsk_acct->last_total_pages=tsk_acct->total_pages;
                 tsk_acct->total_pages=0;
                 spin_unlock(&tsk_acct->lock);
             }
@@ -88,7 +89,7 @@ void free_pages_account(struct page *page, unsigned int order)
     int i;
     unsigned int times = math_pow(2,order);
     for(i=0;i<times;i++){
-        if (page->pg_acct && page->pg_acct->task->traced && page->pg_acct->task->acct){
+        if (page->pg_acct && page->pg_acct->task->traced==1 && page->pg_acct->task->acct){
             spin_lock(&page->pg_acct->task->acct->lock);
             page->pg_acct->task->acct->total_pages_in_lru--;
             spin_unlock(&page->pg_acct->task->acct->lock);
@@ -101,10 +102,12 @@ void free_pages_account(struct page *page, unsigned int order)
 
 void free_page_account(struct page *page)
 {
-    if (page->pg_acct && page->pg_acct->task->traced && page->pg_acct->task->acct){
+    if (page->pg_acct && page->pg_acct->task->traced==1 && page->pg_acct->task->acct){
         spin_lock(&page->pg_acct->task->acct->lock);
-        if(page->pg_acct->page_in_lru==1)
+        if(page->page_in_lru==1){
             page->pg_acct->task->acct->total_pages_in_lru--;
+            page->page_in_lru=0;
+        }
         else
             printk(KERN_INFO"free a page of traced fn not in lru\n");
         spin_unlock(&page->pg_acct->task->acct->lock);
@@ -134,13 +137,14 @@ static ssize_t traced_task_add(struct kobject *kobj, struct kobj_attribute *attr
     unsigned long new_pid_num = simple_strtoul(buf, &end, 10);
     printk(KERN_INFO"new_pid_num=%d\n",new_pid_num);
     new_pid_task = find_task_by_vpid((int)new_pid_num);
-    printk(KERN_INFO"new_pid_task pid=%d,tgid=%d,name=%s\n",new_pid_task->pid,new_pid_task->tgid,new_pid_task->comm);
+//    printk(KERN_INFO"new_pid_task pid=%d,tgid=%d,name=%s\n",new_pid_task->pid,new_pid_task->tgid,new_pid_task->comm);
     if (!new_pid_task->acct){
         new_pid_task->acct = kmalloc(sizeof(struct task_account),GFP_ATOMIC);
         spin_lock_init(&new_pid_task->acct->lock);
         spin_lock(&new_pid_task->acct->lock);
         new_pid_task->acct->total_pages_in_lru=0;
         new_pid_task->acct->total_pages=0;
+        new_pid_task->acct->last_total_pages=0;
         new_pid_task->acct->task=new_pid_task;
         strcpy(new_pid_task->acct->name,new_pid_task->comm);
         new_pid_task->acct->pid=new_pid_task->pid;

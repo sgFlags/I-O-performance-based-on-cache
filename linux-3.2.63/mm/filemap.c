@@ -1130,7 +1130,6 @@ find_page:
 				goto no_cached_page;
 		}
       
-        //bai start
  
       //  if((current->comm[0]=='a'&&current->comm[1]=='.')||(current->comm[0]=='f'&&current->comm[1]=='i'))
        //     printk(KERN_INFO"%d %s read a page\n",current->pid,current->comm);    
@@ -1201,6 +1200,7 @@ page_ok:
         {
          //   printk(KERN_INFO"%d read traced success!!\n", current->pid);
             struct timeval tv;
+           // int flags;
             do_gettimeofday(&tv);
             if(!page->pg_acct || page->pg_acct->task!=current){
                 kfree(page->pg_acct);
